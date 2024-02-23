@@ -1,0 +1,2 @@
+# ginject
+go inject tool
