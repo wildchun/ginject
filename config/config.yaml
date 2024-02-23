@@ -1,0 +1,9 @@
+app:
+  name: "MyApp"
+  version: "1.0.0"
+  number: 10
+  mqtt:
+    broker: "tcp://127.0.0.1:1883"
+    clientId: "client"
+    username: "admin"
+    password: "public"
