@@ -1,2 +1,2 @@
 # ginject
-go inject tool
+go inject tool on goframe
