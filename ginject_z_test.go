@@ -55,3 +55,14 @@ func TestInjectSlice(t *testing.T) {
 	}
 	g.Dump(&withSlice)
 }
+
+func TestInjectWithPointer(t *testing.T) {
+	var obj struct {
+		Str *string `inject:"app.name"`
+	}
+	inj := New(g.Cfg())
+	if err := inj.Apply(&obj); err != nil {
+		t.Error("injector failed", err)
+	}
+	g.Dump(obj)
+}

@@ -91,9 +91,7 @@ func (inj *injector) doApplyStruct(ctx context.Context, d interface{}, prefix st
 			bind        string
 			defValueStr string
 		)
-		if !field.Value.CanAddr() {
-			continue
-		}
+
 		// if the field is a struct, do recursive injection and skip the next steps
 		if field.Kind() == reflect.Struct {
 			_ = inj.doApplyStruct(ctx, GetPtrUnexportFiled(d, field.Name()).Addr().Interface(), prefix)
@@ -106,8 +104,15 @@ func (inj *injector) doApplyStruct(ctx context.Context, d interface{}, prefix st
 		// get the value from the data source
 		bindPath := joinPath(prefix, bind)
 		defValueStr = getFieldDefault(field)
+
 		// get the reflect.Value of the field which is writeable
+		// if the field is a pointer, create a new value and set it to the field
 		rv := GetWriteAbleReflectValue(d, field)
+		if field.Type().Kind() == reflect.Ptr {
+			val := reflect.New(field.Type().Elem())
+			rv.Set(val)
+			rv = val.Elem()
+		}
 		switch rv.Kind() {
 		case reflect.String,
 			reflect.Bool,
