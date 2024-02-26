@@ -12,6 +12,7 @@ import (
 	"github.com/gogf/gf/v2/container/gvar"
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/os/gstructs"
+	"github.com/gogf/gf/v2/util/gconv"
 	"github.com/gogf/gf/v2/util/gmeta"
 )
 
@@ -41,13 +42,6 @@ func NewWithPrefix(data DataSource, prefix string) Injector {
 		prefix: prefix,
 		data:   data,
 	}
-}
-
-func writeableReflectValue(d interface{}, f gstructs.Field) reflect.Value {
-	if f.IsExported() {
-		return f.Value
-	}
-	return GetPtrUnexportFiled(d, f.Name())
 }
 
 func (inj *injector) SetDataSource(data DataSource) {
@@ -94,8 +88,8 @@ func (inj *injector) doApplyStruct(ctx context.Context, d interface{}, prefix st
 	})
 	for _, field := range allFields {
 		var (
-			bind string
-			def  string
+			bind        string
+			defValueStr string
 		)
 		if !field.Value.CanAddr() {
 			continue
@@ -111,42 +105,71 @@ func (inj *injector) doApplyStruct(ctx context.Context, d interface{}, prefix st
 		}
 		// get the value from the data source
 		bindPath := joinPath(prefix, bind)
-		def = getFieldDefault(field)
+		defValueStr = getFieldDefault(field)
 		// get the reflect.Value of the field which is writeable
 		rv := GetWriteAbleReflectValue(d, field)
 		switch rv.Kind() {
-		case reflect.String:
-			val := inj.data.MustGet(ctx, bindPath, def).String()
-			rv.SetString(val)
-		case reflect.Bool:
-			val := inj.data.MustGet(ctx, bindPath, def).Bool()
-			rv.SetBool(val)
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			val := inj.data.MustGet(ctx, bindPath, def).Int64()
-			rv.SetInt(val)
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			val := inj.data.MustGet(ctx, bindPath, def).Uint64()
-			rv.SetUint(val)
+		case reflect.String,
+			reflect.Bool,
+			reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.Float32, reflect.Float64:
+			inj.doApplyBaseType(rv, inj.data.MustGet(ctx, bindPath, defValueStr))
 		case reflect.Slice:
-			val := inj.data.MustGet(ctx, bindPath, def)
-			if !val.IsSlice() {
-				continue
-			}
-			// get elem kind
-			elemKind := reflect.New(field.Type().Elem()).Elem().Kind()
-			switch elemKind {
-			case reflect.String:
-				rv.Set(reflect.ValueOf(val.Strings()))
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-				rv.Set(reflect.ValueOf(val.Ints()))
-			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-				rv.Set(reflect.ValueOf(val.Uints()))
-			default:
-				continue
-			}
+			inj.doApplySlice(ctx, rv, bindPath)
 		default:
 			continue
 		}
 	}
 	return nil
+}
+
+func (inj *injector) doApplySlice(ctx context.Context, v reflect.Value, path string) {
+	val := inj.data.MustGet(ctx, path, nil)
+	if !val.IsSlice() {
+		return
+	}
+	// get elem kind
+	elemKind := reflect.New(v.Type().Elem()).Elem().Kind()
+	switch elemKind {
+	case reflect.String,
+		reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		vLen := len(val.Vars())
+		newV := reflect.MakeSlice(v.Type(), vLen, vLen)
+		for index := 0; index < vLen; index++ {
+			idxPath := joinPath(path, gconv.String(index))
+			inj.doApplyBaseType(newV.Index(index), inj.data.MustGet(ctx, idxPath, nil))
+		}
+		v.Set(newV)
+	case reflect.Struct:
+		vLen := len(val.Vars())
+		newV := reflect.MakeSlice(v.Type(), vLen, vLen)
+		for index := 0; index < vLen; index++ {
+			idxPath := joinPath(path, gconv.String(index))
+			_ = inj.doApplyStruct(ctx, newV.Index(index).Addr().Interface(), idxPath)
+		}
+		v.Set(newV)
+	default:
+		return
+	}
+}
+
+func (inj *injector) doApplyBaseType(value reflect.Value, v *gvar.Var) {
+	switch value.Kind() {
+	case reflect.String:
+		value.SetString(v.String())
+	case reflect.Bool:
+		value.SetBool(v.Bool())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value.SetInt(v.Int64())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		value.SetUint(v.Uint64())
+	case reflect.Float32, reflect.Float64:
+		value.SetFloat(v.Float64())
+	default:
+		return
+	}
 }

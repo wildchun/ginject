@@ -43,7 +43,11 @@ func TestInject(t *testing.T) {
 
 func TestInjectSlice(t *testing.T) {
 	var withSlice struct {
-		numbers []int `inject:"list"`
+		struts []struct {
+			name string `inject:"name"`
+			age  int    `inject:"age"`
+			list []bool `inject:"list"`
+		} `inject:"structs"`
 	}
 	inj := New(g.Cfg())
 	if err := inj.Apply(&withSlice); err != nil {

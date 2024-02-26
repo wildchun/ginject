@@ -11,3 +11,14 @@ app:
 list:
   - 10
   - 20
+structs:
+  - name: "John"
+    age: 20
+    list:
+      - true
+      - false
+  - name: "Doe"
+    age: 30
+    list:
+      - true
+      - false
