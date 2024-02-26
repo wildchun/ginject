@@ -40,3 +40,14 @@ func TestInject(t *testing.T) {
 	}
 	g.Dump(obj)
 }
+
+func TestInjectSlice(t *testing.T) {
+	var withSlice struct {
+		numbers []int `inject:"list"`
+	}
+	inj := New(g.Cfg())
+	if err := inj.Apply(&withSlice); err != nil {
+		t.Error("injector failed", err)
+	}
+	g.Dump(&withSlice)
+}

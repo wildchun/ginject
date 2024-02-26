@@ -43,22 +43,21 @@ func NewWithPrefix(data DataSource, prefix string) Injector {
 	}
 }
 
-func joinPath(prefix, sub string) string {
-	if prefix == "" {
-		return sub
-	}
-	if sub == "" {
-		return prefix
-	}
-	return prefix + "." + sub
-}
-
 func writeableReflectValue(d interface{}, f gstructs.Field) reflect.Value {
 	if f.IsExported() {
 		return f.Value
 	}
 	return GetPtrUnexportFiled(d, f.Name())
 }
+
+func (inj *injector) SetDataSource(data DataSource) {
+	inj.data = data
+}
+
+func (inj *injector) DataSource() DataSource {
+	return inj.data
+}
+
 func (inj *injector) Sub(prefix string) Injector {
 	return &injector{
 		prefix: joinPath(inj.prefix, prefix),
@@ -73,7 +72,9 @@ func (inj *injector) Apply(d interface{}) error {
 			return
 		}
 	}()
-
+	if inj.data == nil {
+		return gerror.New("data source is nil")
+	}
 	v := reflect.ValueOf(d)
 	if v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
 		v = v.Elem()
@@ -104,16 +105,16 @@ func (inj *injector) doApplyStruct(ctx context.Context, d interface{}, prefix st
 			_ = inj.doApplyStruct(ctx, GetPtrUnexportFiled(d, field.Name()).Addr().Interface(), prefix)
 			continue
 		}
-		if bind = field.Tag("inject"); bind == "" {
+		if bind = getFieldPath(field); bind == "" {
 			// if the field has no bind tag, it does not need to be injected
 			continue
 		}
 		// get the value from the data source
 		bindPath := joinPath(prefix, bind)
-		def, _ = field.TagLookup("def")
+		def = getFieldDefault(field)
 		// get the reflect.Value of the field which is writeable
 		rv := GetWriteAbleReflectValue(d, field)
-		switch field.Kind() {
+		switch rv.Kind() {
 		case reflect.String:
 			val := inj.data.MustGet(ctx, bindPath, def).String()
 			rv.SetString(val)
@@ -126,6 +127,23 @@ func (inj *injector) doApplyStruct(ctx context.Context, d interface{}, prefix st
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			val := inj.data.MustGet(ctx, bindPath, def).Uint64()
 			rv.SetUint(val)
+		case reflect.Slice:
+			val := inj.data.MustGet(ctx, bindPath, def)
+			if !val.IsSlice() {
+				continue
+			}
+			// get elem kind
+			elemKind := reflect.New(field.Type().Elem()).Elem().Kind()
+			switch elemKind {
+			case reflect.String:
+				rv.Set(reflect.ValueOf(val.Strings()))
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				rv.Set(reflect.ValueOf(val.Ints()))
+			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				rv.Set(reflect.ValueOf(val.Uints()))
+			default:
+				continue
+			}
 		default:
 			continue
 		}

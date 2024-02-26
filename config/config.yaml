@@ -7,3 +7,7 @@ app:
     clientId: "client"
     username: "admin"
     password: "public"
+
+list:
+  - 10
+  - 20
