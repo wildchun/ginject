@@ -7,10 +7,10 @@ package ginject
 
 import (
 	"context"
+	"github.com/gogf/gf/v2/errors/gerror"
 	"reflect"
 
 	"github.com/gogf/gf/v2/container/gvar"
-	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/os/gstructs"
 	"github.com/gogf/gf/v2/util/gconv"
 	"github.com/gogf/gf/v2/util/gmeta"
@@ -26,7 +26,7 @@ type injector struct {
 }
 
 type Injector interface {
-	Apply(d interface{}) error
+	Apply(d interface{}, opt ...Options) error
 	Sub(prefix string) Injector
 }
 
@@ -59,7 +59,7 @@ func (inj *injector) Sub(prefix string) Injector {
 	}
 }
 
-func (inj *injector) Apply(d interface{}) error {
+func (inj *injector) Apply(d interface{}, opt ...Options) error {
 	defer func() {
 		if r := recover(); r != nil {
 			println(r)
@@ -74,54 +74,63 @@ func (inj *injector) Apply(d interface{}) error {
 		v = v.Elem()
 	}
 	if v.Kind() != reflect.Struct {
-		return gerror.New("need struct")
+		return gerror.New("injecting object should be a struct or a pointer to struct")
 	}
-	return inj.doApplyStruct(context.TODO(), d, inj.prefix)
+	option := defaultOptions
+	if len(opt) > 0 {
+		option = &opt[0]
+	}
+	return inj.doApplyStruct(context.TODO(), d, inj.prefix, option)
 }
 
-func (inj *injector) doApplyStruct(ctx context.Context, d interface{}, prefix string) error {
+func (inj *injector) doApplyStruct(ctx context.Context, d interface{}, prefix string, opt *Options) error {
 	// reset prefix if the struct has gmeta.Meta
 	prefix = joinPath(prefix, gmeta.Get(d, "prefix").String())
-	allFields, _ := gstructs.Fields(gstructs.FieldsInput{
+	structFields, _ := gstructs.Fields(gstructs.FieldsInput{
 		Pointer:         d,
 		RecursiveOption: 0,
 	})
-	for _, field := range allFields {
-		var (
-			bind        string
-			defValueStr string
-		)
-
+	for _, field := range structFields {
 		// if the field is a struct, do recursive injection and skip the next steps
 		if field.Kind() == reflect.Struct {
-			_ = inj.doApplyStruct(ctx, GetPtrUnexportFiled(d, field.Name()).Addr().Interface(), prefix)
+			_ = inj.doApplyStruct(ctx, GetPtrUnexportFiled(d, field.Name()).Addr().Interface(), prefix, opt)
 			continue
 		}
-		if bind = getFieldPath(field); bind == "" {
+
+		tag := findTagDesc(field)
+		if tag == nil {
 			// if the field has no bind tag, it does not need to be injected
 			continue
 		}
+
 		// get the value from the data source
-		bindPath := joinPath(prefix, bind)
-		defValueStr = getFieldDefault(field)
+		tag.JoinPrefix(prefix)
+
+		//defValueStr = getFieldDefault(field)
 
 		// get the reflect.Value of the field which is writeable
 		// if the field is a pointer, create a new value and set it to the field
 		rv := GetWriteAbleReflectValue(d, field)
 		if field.Type().Kind() == reflect.Ptr {
+			if !opt.CreatIfPointer {
+				continue
+			}
 			val := reflect.New(field.Type().Elem())
 			rv.Set(val)
 			rv = val.Elem()
 		}
+
 		switch rv.Kind() {
 		case reflect.String,
 			reflect.Bool,
 			reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 			reflect.Float32, reflect.Float64:
-			inj.doApplyBaseType(rv, inj.data.MustGet(ctx, bindPath, defValueStr))
+			if err := inj.doApplyBaseType(rv, tag, opt); err != nil {
+				return err
+			}
 		case reflect.Slice:
-			inj.doApplySlice(ctx, rv, bindPath)
+			inj.doApplySlice(ctx, rv, tag, opt)
 		default:
 			continue
 		}
@@ -129,8 +138,8 @@ func (inj *injector) doApplyStruct(ctx context.Context, d interface{}, prefix st
 	return nil
 }
 
-func (inj *injector) doApplySlice(ctx context.Context, v reflect.Value, path string) {
-	val := inj.data.MustGet(ctx, path, nil)
+func (inj *injector) doApplySlice(ctx context.Context, v reflect.Value, tag *tagDesc, opt *Options) {
+	val := inj.data.MustGet(ctx, *tag.path, nil)
 	if !val.IsSlice() {
 		return
 	}
@@ -145,16 +154,23 @@ func (inj *injector) doApplySlice(ctx context.Context, v reflect.Value, path str
 		vLen := len(val.Vars())
 		newV := reflect.MakeSlice(v.Type(), vLen, vLen)
 		for index := 0; index < vLen; index++ {
-			idxPath := joinPath(path, gconv.String(index))
-			inj.doApplyBaseType(newV.Index(index), inj.data.MustGet(ctx, idxPath, nil))
+			idxPath := tag.WithSubPath(gconv.String(index))
+			err := inj.doApplyBaseType(newV.Index(index), &tagDesc{
+				valid:        true,
+				path:         &idxPath,
+				defaultValue: nil,
+			}, opt)
+			if err != nil {
+				return
+			}
 		}
 		v.Set(newV)
 	case reflect.Struct:
 		vLen := len(val.Vars())
 		newV := reflect.MakeSlice(v.Type(), vLen, vLen)
 		for index := 0; index < vLen; index++ {
-			idxPath := joinPath(path, gconv.String(index))
-			_ = inj.doApplyStruct(ctx, newV.Index(index).Addr().Interface(), idxPath)
+			idxPath := tag.WithSubPath(gconv.String(index))
+			_ = inj.doApplyStruct(ctx, newV.Index(index).Addr().Interface(), idxPath, opt)
 		}
 		v.Set(newV)
 	default:
@@ -162,7 +178,18 @@ func (inj *injector) doApplySlice(ctx context.Context, v reflect.Value, path str
 	}
 }
 
-func (inj *injector) doApplyBaseType(value reflect.Value, v *gvar.Var) {
+func (inj *injector) doApplyBaseType(value reflect.Value, tag *tagDesc, opt *Options) error {
+	v := inj.data.MustGet(context.Background(), *tag.path, nil)
+
+	if v.IsNil() {
+		if tag.defaultValue != nil {
+			v = gvar.New(*tag.defaultValue)
+		} else if opt.ErrorOnUnmatched {
+			return gerror.New("value not found")
+		} else {
+			return nil
+		}
+	}
 	switch value.Kind() {
 	case reflect.String:
 		value.SetString(v.String())
@@ -175,6 +202,11 @@ func (inj *injector) doApplyBaseType(value reflect.Value, v *gvar.Var) {
 	case reflect.Float32, reflect.Float64:
 		value.SetFloat(v.Float64())
 	default:
-		return
+		if opt.ErrorOnTypeErr {
+			return gerror.Newf("unsupported type:%v", value.Kind())
+		} else {
+			return nil
+		}
 	}
+	return nil
 }

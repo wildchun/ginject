@@ -18,10 +18,7 @@ type Object struct {
 	version    string `inject:"version" def:"1.0.0"`
 	mqtt       struct {
 		gmeta.Meta `prefix:"mqtt"`
-		broker     string `inject:"broker" def:"tcp://10.147.198.110:1883"`
-		clientId   string `inject:"clientId" def:""`
-		username   string `inject:"username" def:""`
-		password   string `inject:"password" def:""`
+		broker     string `value:"${broker}" default:"tcp://10.147.198.110:1883"`
 	}
 	number struct {
 		number1 int   `inject:"number" def:"1"`
