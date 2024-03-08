@@ -51,10 +51,10 @@ func pathJoin(prefix, sub string) string {
 	return prefix + "." + sub
 }
 
-func (c *AutoWire) AutoWire(data interface{}, opt ...ApplyOptions) error {
+func (c *AutoWire) AutoWire(data interface{}, opt ...*ApplyOptions) error {
 	options := defaultOptions
 	if len(opt) > 0 {
-		options = &opt[0]
+		options = opt[0]
 	}
 	structValue := reflect.ValueOf(data)
 	if structValue.Kind() != reflect.Ptr || structValue.Elem().Kind() != reflect.Struct {
@@ -73,6 +73,9 @@ func (c *AutoWire) doAutoWireStruct(in doWireStructInput) error {
 	structType := in.structValue.Type()
 	for fiIdx := 0; fiIdx < structType.NumField(); fiIdx++ {
 		field := structType.Field(fiIdx)
+		if field.PkgPath != "" && in.opt.SkipUnExported {
+			continue
+		}
 		fieldValue := in.structValue.Field(fiIdx)
 		tag := field.Tag.Get("autowire")
 		if (tag == "" || tag == "-") && fieldValue.Kind() != reflect.Struct {
@@ -80,7 +83,9 @@ func (c *AutoWire) doAutoWireStruct(in doWireStructInput) error {
 		}
 		newPrefix := pathJoin(in.prefix, tag)
 		newFiPath := pathJoin(in.fieldPath, field.Name)
-		fieldValue = reflect.NewAt(fieldValue.Type(), unsafe.Pointer(fieldValue.UnsafeAddr())).Elem()
+		if field.PkgPath != "" {
+			fieldValue = reflect.NewAt(fieldValue.Type(), unsafe.Pointer(fieldValue.UnsafeAddr())).Elem()
+		}
 		var def *string = nil
 		if defaultStr, ok := field.Tag.Lookup("default"); ok {
 			def = &defaultStr
@@ -90,6 +95,7 @@ func (c *AutoWire) doAutoWireStruct(in doWireStructInput) error {
 			valuePath:     newPrefix,
 			fieldPath:     newFiPath,
 			defaultString: def,
+			opt:           in.opt,
 		}); err != nil {
 			return err
 		}
@@ -118,7 +124,7 @@ func (c *AutoWire) doAutoWireSlice(in doWireSliceInput) error {
 			valuePath:     newPrefix,
 			fieldPath:     newFiPath,
 			defaultString: nil,
-			opt:           nil,
+			opt:           in.opt,
 		}); err != nil {
 			return err
 		}

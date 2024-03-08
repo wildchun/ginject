@@ -6,10 +6,7 @@
 package ginject
 
 import (
-	"fmt"
-	"reflect"
 	"testing"
-	"unsafe"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/test/gtest"
@@ -20,10 +17,10 @@ type Object struct {
 	gmeta.Meta `prefix:"app"`
 	appName    string `autowire:"app.name" default:"app_default"`
 	version    string `autowire:"app.version" default:"1.0.0"`
-	mqtt       struct {
-		broker string `autowire:"app.mqtt.broker" default:"tcp://10.147.198.110:1883"`
+	Mqtt       struct {
+		Broker string `autowire:"app.mqtt.broker" default:"tcp://10.147.198.110:1883"`
 	}
-	number struct {
+	Number struct {
 		number1 int   `autowire:"app.number" default:"1"`
 		number2 int8  `autowire:"app.number" default:"2"`
 		number3 int16 `autowire:"app.number" default:"3"`
@@ -33,30 +30,16 @@ type Object struct {
 	list []int `autowire:"list"`
 }
 
-func TestAny(t *testing.T) {
+func TestAutoWire(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		c := &AutoWire{
 			adapter: g.Cfg(),
 		}
 		obj := &Object{}
-		t.Assert(c.AutoWire(obj), nil)
+		t.Assert(c.AutoWire(obj, &ApplyOptions{
+			SkipUnExported:   true,
+			ErrorOnUnmatched: true,
+		}), nil)
 		g.Dump(obj)
-	})
-}
-func TestAny2(t *testing.T) {
-	gtest.C(t, func(t *gtest.T) {
-		var s = struct{ foo int }{100}
-		var i int
-
-		structValue := reflect.ValueOf(&s).Elem()
-		fieldValue := structValue.Field(0)
-		setValue := reflect.ValueOf(&i).Elem()
-
-		// use of NewAt() method
-		fieldValue = reflect.NewAt(fieldValue.Type(), unsafe.Pointer(fieldValue.UnsafeAddr())).Elem()
-		setValue.Set(fieldValue)
-		fieldValue.Set(setValue)
-
-		fmt.Println(fieldValue)
 	})
 }
