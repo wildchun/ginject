@@ -1,4 +1,4 @@
-module github.com/wildchun/ginject
+module hdgitlab.com/embedded_platform/gomodules/ginject.git
 
 go 1.20
 
@@ -23,7 +23,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.24.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.24.0 // indirect
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
-	go.uber.org/dig v1.17.1 // indirect
 	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/sys v0.17.0 // indirect
 	golang.org/x/text v0.13.0 // indirect

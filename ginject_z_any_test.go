@@ -10,14 +10,12 @@ import (
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/test/gtest"
-	"github.com/gogf/gf/v2/util/gmeta"
 )
 
 type Object struct {
-	gmeta.Meta `prefix:"app"`
-	appName    string `autowire:"app.name" default:"app_default"`
-	version    string `autowire:"app.version" default:"1.0.0"`
-	Mqtt       struct {
+	appName string `autowire:"app.name" default:"app_default"`
+	version string `autowire:"app.version" default:"1.0.0"`
+	Mqtt    struct {
 		Broker string `autowire:"app.mqtt.broker" default:"tcp://10.147.198.110:1883"`
 	}
 	Number struct {
@@ -27,17 +25,27 @@ type Object struct {
 		number4 int32 `autowire:"app.number" default:"4"`
 		number5 int64 `autowire:"app.number" default:"5"`
 	}
-	list []int `autowire:"list"`
+	list     []int      `autowire:"list"`
+	listlist [][]string `autowire:"listlist"`
 }
 
-func TestAutoWire(t *testing.T) {
+func TestAutoWireSkipUnexport(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
-		c := &AutoWire{
-			adapter: g.Cfg(),
-		}
+		c := NewAutoWire()
 		obj := &Object{}
-		t.Assert(c.AutoWire(obj, &ApplyOptions{
+		t.Assert(c.AutoWire(obj, &AutoWireOptions{
 			SkipUnExported:   true,
+			ErrorOnUnmatched: true,
+		}), nil)
+		g.Dump(obj)
+	})
+}
+func TestAutoWireWithUnexport(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		c := NewAutoWire()
+		obj := &Object{}
+		t.Assert(c.AutoWire(obj, &AutoWireOptions{
+			SkipUnExported:   false,
 			ErrorOnUnmatched: true,
 		}), nil)
 		g.Dump(obj)

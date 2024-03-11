@@ -12,32 +12,36 @@ import (
 
 	"github.com/gogf/gf/v2/container/gvar"
 	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/frame/g"
 )
 
 type AutoWire struct {
 	adapter DataAdapter
 }
 
+// doWireStructInput is the input parameter for doAutoWireStruct.
 type doWireStructInput struct {
 	structValue reflect.Value
 	prefix      string
 	fieldPath   string
-	opt         *ApplyOptions
+	opt         *AutoWireOptions
 }
 
+// doWireValueInput is the input parameter for doAutoWireValue.
 type doWireValueInput struct {
 	value         reflect.Value
 	valuePath     string
 	fieldPath     string
 	defaultString *string
-	opt           *ApplyOptions
+	opt           *AutoWireOptions
 }
 
+// doWireSliceInput is the input parameter for doAutoWireSlice.
 type doWireSliceInput struct {
 	value     reflect.Value
 	valuePath string
 	fieldPath string
-	opt       *ApplyOptions
+	opt       *AutoWireOptions
 }
 
 // pathJoin joins the prefix and sub path with dot., like "prefix.sub"
@@ -51,7 +55,23 @@ func pathJoin(prefix, sub string) string {
 	return prefix + "." + sub
 }
 
-func (c *AutoWire) AutoWire(data interface{}, opt ...*ApplyOptions) error {
+// NewAutoWireWithAdapter creates and returns a new AutoWire object with given adapter.
+func NewAutoWireWithAdapter(adapter DataAdapter) *AutoWire {
+	return &AutoWire{
+		adapter: adapter,
+	}
+}
+
+// NewAutoWire creates and returns a new AutoWire object. the adapter is set to g.Cfg() by default.
+func NewAutoWire() *AutoWire {
+	return &AutoWire{
+		adapter: g.Cfg(),
+	}
+}
+
+// AutoWire automatically injects configuration data from adapter to the struct object.
+// The parameter `data` should be a pointer of struct object. if `opt` is given, it overwrites the default options.
+func (c *AutoWire) AutoWire(data interface{}, opt ...*AutoWireOptions) error {
 	options := defaultOptions
 	if len(opt) > 0 {
 		options = opt[0]
@@ -61,12 +81,25 @@ func (c *AutoWire) AutoWire(data interface{}, opt ...*ApplyOptions) error {
 		return gerror.New("the data must be a valid pointer of struct")
 	}
 	structValue = structValue.Elem()
+	if c.adapter == nil {
+		return gerror.New("adapter is not set")
+	}
 	return c.doAutoWireStruct(doWireStructInput{
 		structValue: structValue,
 		prefix:      "",
 		fieldPath:   "",
 		opt:         options,
 	})
+}
+
+// SetDataAdapter sets the data adapter for the AutoWire object.
+func (c *AutoWire) SetDataAdapter(adapter DataAdapter) {
+	c.adapter = adapter
+}
+
+// GetDataAdapter returns the data adapter of the AutoWire object.
+func (c *AutoWire) GetDataAdapter() DataAdapter {
+	return c.adapter
 }
 
 func (c *AutoWire) doAutoWireStruct(in doWireStructInput) error {
@@ -149,7 +182,6 @@ func (c *AutoWire) doAutoWireValue(in doWireValueInput) error {
 			opt:         in.opt,
 		})
 	}
-
 	// fmt.Println("[*] wire field:", in.fieldPath, "with value path:", in.valuePath)
 	v := c.adapter.MustGet(nil, in.valuePath, nil)
 	if v.IsNil() {
@@ -163,8 +195,6 @@ func (c *AutoWire) doAutoWireValue(in doWireValueInput) error {
 		}
 	}
 	switch in.value.Kind() {
-	case reflect.Ptr:
-		return gerror.New("pointer type is not supported in autowire")
 	case reflect.String:
 		in.value.SetString(v.String())
 	case reflect.Bool:
@@ -174,7 +204,9 @@ func (c *AutoWire) doAutoWireValue(in doWireValueInput) error {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		in.value.SetUint(v.Uint64())
 	default:
-		return gerror.Newf("unsupported kind: %s", in.value.Kind().String())
+		if in.opt.ErrorOnUnmatched {
+			return gerror.Newf("unsupported kind: %s", in.value.Kind().String())
+		}
 	}
 	return nil
 }

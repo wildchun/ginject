@@ -16,11 +16,13 @@ type DataAdapter interface {
 	MustGet(ctx context.Context, pattern string, def ...interface{}) *gvar.Var
 }
 
+// DataAdapterWrapper is a wrapper for DataAdapter.
 type DataAdapterWrapper struct {
 	Second DataAdapter
 	First  map[string]*gvar.Var
 }
 
+// MustGet acts as function Get, but it panics if error occurs.
 func (d *DataAdapterWrapper) MustGet(ctx context.Context, pattern string, def ...interface{}) *gvar.Var {
 	if v, ok := d.First[pattern]; ok {
 		return v
