@@ -11,6 +11,11 @@ app:
 list:
   - 10
   - 20
+
+listlist:
+  - [ "list.0.0", "list.0.1" ]
+  - [ "list.1.0", "list.1.1" ]
+
 structs:
   - name: "John"
     age: 20

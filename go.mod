@@ -1,4 +1,4 @@
-module github.com/wildchun/ginject
+module hdgitlab.com/embedded_platform/gomodules/ginject.git
 
 go 1.20
 
